@@ -1,7 +1,7 @@
 {
   "name": "rating-engine-api",
   "version": "1.0.0",
-  "description": "保險定價模型 API",
+  "description": "保險定價模型  API",
   "main": "server.js",
   "type": "module",
   "scripts": {
