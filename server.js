@@ -55,11 +55,11 @@ app.post('/api/calculate', (req, res) => {
         };
 
         // 4. 設定各險種的「基準值 (Base)」與「實際簽單保費 (Actual Premium)」
-        // 數值精準對接您的 Excel 模型截圖
-        let freq_B = 0.2019, sev_B = 76643, actual_B = 20365;      // 乙式
-        let freq_C = 0.1442, sev_C = 135810, actual_C = 3193;      // 丙式
-        let freq_PD = 0.0501, sev_PD = 38430, actual_PD = 1775;    // 第三人財損
-        let freq_BI = 1.1659, sev_BI = 76850, actual_BI = 1218;    // 第三人體傷
+        // ⚠️ 已完美校正為 Excel 裡的「Predicted Frequency (預估頻率基數)」
+        let freq_B = 0.2669, sev_B = 76643, actual_B = 20365;      // 乙式
+        let freq_C = 0.1299, sev_C = 135810, actual_C = 3193;      // 丙式
+        let freq_PD = 0.0760, sev_PD = 38430, actual_PD = 1775;    // 第三人財損
+        let freq_BI = 0.022925, sev_BI = 76850, actual_BI = 1218;  // 第三人體傷
 
         // 5. 進行迴圈相乘運算 (根據 JSON 實際的 Key 進行運算)
         for (const factorName in coefData) {
