@@ -3,7 +3,7 @@ import express from 'express';
 const app = express();
 app.use(express.json());
 
-// ============ 1. 完整帶入 HTML 裡的 BASE 與 COEF ============
+// ============ 1. 基礎值 (Intercept) ============
 const BASE = {
     MODB: { freqBase: 0.201886068352, sevBase: 76643.3351101606, excessLoading: 1.0 },
     MODC: { freqBase: 0.144189270833, sevBase: 135809.94549238, excessLoading: 1.0 },
@@ -11,6 +11,7 @@ const BASE = {
     TPLBI: { freqBase: 0.0196627190383, sevBase: 76850.3825114719, excessLoading: 1.028015 }
 };
 
+// ============ 2. 係數表 (25個風險因數完整版) ============
 const COEF = {
     applicant_rela: {
         "本人_Myself": { modb_f: 1.0, modb_s: 1.0, modc_f: 1.0, modc_s: 1.0, tplpd_f: 1.0, tplpd_s: 1.0, tplbi_f: 1.0, tplbi_s: 1.0 },
@@ -197,49 +198,46 @@ const COEF = {
     }
 };
 
-// ============ 2. 建立 API 端點 ============
+// ============ 3. 建立運算 API ============
 app.post('/api/calculate', (req, res) => {
     try {
-        // 接收從 Power Automate 傳來的前端參數 (8個核心參數)
-        const { 
-            age, sex, make, vehAge, rPrice, respRank, excess, totalInsured 
-        } = req.body;
+        const body = req.body;
 
-        // ============ 3. 整合 25 個因子的輸入值 ============
-        // 核心變數使用前端傳來的值，其餘的給予「業務預設值」
+        // ============ 4. 智能處理 25 個輸入參數 ============
+        // 將收到的 13 個參數映射到 25 個風險因數，未傳入的會自動套用最佳預設值
         const inputs = {
-            applicant_rela: "本人_Myself",
-            insured_age: parseInt(age) || 38,
-            insured_sex: sex === "Male" ? "男性_Male" : "女性_Female",
-            sex_age: (sex === "Male" ? "M_" : "F_") + (parseFloat(age) || 38).toFixed(1),
-            zip_code: 324, // 預設地區
-            make_desc: make || "Toyota豐田",
-            motor_type: "自用小客車_PPA",
-            veh_age: parseInt(vehAge) || 5,
-            displacement: 3000, // 預設排氣量
-            motor_coef: "-0.4",
-            passages: "4",
-            rprice: parseInt(rPrice) || 2100000,
-            com_ru1: 5,
-            tft_ru1: 7,
-            sales_channel: "23.富昇保代",
-            resp_rank: String(respRank || "4"),
-            pol_cy: "2023",
-            renew_flag: "N",
-            sec_eip: "Y",
-            tdir_flag: "N",
-            exliab_flag: "Y",
-            excess_amt: String(excess || "0"),
-            total_insured: parseInt(totalInsured) || 598000,
-            per_body_amt: 2100000,
-            per_death_amt: 3000000
+            applicant_rela: "本人_Myself", // 1. 預設值
+            insured_age: parseInt(body.age) || 38, // 2. 來自前端
+            insured_sex: body.sex === "Male" ? "男性_Male" : (body.sex === "Company" ? "法人_CompanyUse" : "女性_Female"), // 3. 來自前端
+            sex_age: (body.sex === "Male" ? "M_" : "F_") + (parseFloat(body.age) || 38).toFixed(1), // 4. 系統自動組合計算
+            zip_code: parseInt(body.zip_code) || 324, // 5. 來自進階選單
+            make_desc: body.make || "Toyota豐田", // 6. 來自前端
+            motor_type: "自用小客車_PPA", // 7. 預設值
+            veh_age: parseInt(body.vehAge) || 5, // 8. 來自前端
+            displacement: parseInt(body.displacement) || 3000, // 9. 來自進階選單
+            motor_coef: "-0.4", // 10. 預設值
+            passages: String(body.passages || "4"), // 11. 來自進階選單
+            rprice: parseInt(body.rPrice) || 2100000, // 12. 來自前端
+            com_ru1: 5, // 13. 預設值
+            tft_ru1: 7, // 14. 預設值
+            sales_channel: body.sales_channel || "23.富昇保代", // 15. 來自進階選單
+            resp_rank: String(body.respRank || "4"), // 16. 來自前端
+            pol_cy: "2023", // 17. 預設值
+            renew_flag: body.renew_flag || "N", // 18. 來自進階選單
+            sec_eip: "Y", // 19. 預設值
+            tdir_flag: "N", // 20. 預設值
+            exliab_flag: "Y", // 21. 預設值
+            excess_amt: String(body.excess || "0"), // 22. 來自前端
+            total_insured: parseInt(body.totalInsured) || 598000, // 23. 來自前端
+            per_body_amt: 2100000, // 24. 預設值
+            per_death_amt: 3000000 // 25. 預設值
         };
 
-        // ============ 4. 初始化頻率與損失 ============
+        // ============ 5. 初始化頻率與損失 ============
         let freqCoef = { modb: 1, modc: 1, tplpd: 1, tplbi: 1 };
         let sevCoef = { modb: 1, modc: 1, tplpd: 1, tplbi: 1 };
 
-        // 定義相乘邏輯
+        // 建立相乘計算函數
         function addCoef(c) {
             if (!c) return;
             if (c.modb_f) freqCoef.modb *= c.modb_f;
@@ -252,45 +250,44 @@ app.post('/api/calculate', (req, res) => {
             if (c.tplbi_s) sevCoef.tplbi *= c.tplbi_s;
         }
 
-        // ============ 5. 執行 25 項因子查表 ============
-        addCoef(COEF.applicant_rela[inputs.applicant_rela]);
+        // ============ 6. 執行 25 個因數查表運算 ============
+        // 這段邏輯精準對接了 carmodel.html 裡面的每一項查表
+        addCoef(COEF.applicant_rela[inputs.applicant_rela] || {});
         addCoef(COEF.insured_age(inputs.insured_age));
-        addCoef(COEF.insured_sex[inputs.insured_sex]);
+        addCoef(COEF.insured_sex[inputs.insured_sex] || {});
         addCoef(COEF.sex_age(inputs.sex_age));
         addCoef(COEF.zip_code(inputs.zip_code));
         addCoef(COEF.make_desc[inputs.make_desc] || COEF.make_desc['缺失值']);
-        addCoef(COEF.motor_type[inputs.motor_type]);
+        addCoef(COEF.motor_type[inputs.motor_type] || {});
         addCoef(COEF.veh_age(inputs.veh_age));
         addCoef(COEF.displacement(inputs.displacement));
-        addCoef(COEF.motor_coef[inputs.motor_coef]);
-        addCoef(COEF.passages[inputs.passages]);
+        addCoef(COEF.motor_coef[inputs.motor_coef] || {});
+        addCoef(COEF.passages[inputs.passages] || {});
         addCoef(COEF.rprice(inputs.rprice));
         addCoef(COEF.com_ru1(inputs.com_ru1));
         addCoef(COEF.tft_ru1(inputs.tft_ru1));
-        addCoef(COEF.sales_channel[inputs.sales_channel]);
-        addCoef(COEF.resp_rank[inputs.resp_rank]);
-        addCoef(COEF.pol_cy[inputs.pol_cy]);
-        addCoef(COEF.renew_flag[inputs.renew_flag]);
-        addCoef(COEF.sec_eip[inputs.sec_eip]);
-        addCoef(COEF.tdir_flag[inputs.tdir_flag]);
-        addCoef(COEF.exliab_flag[inputs.exliab_flag]);
-        addCoef(COEF.excess_amt[inputs.excess_amt]);
+        addCoef(COEF.sales_channel[inputs.sales_channel] || {});
+        addCoef(COEF.resp_rank[inputs.resp_rank] || {});
+        addCoef(COEF.pol_cy[inputs.pol_cy] || {});
+        addCoef(COEF.renew_flag[inputs.renew_flag] || {});
+        addCoef(COEF.sec_eip[inputs.sec_eip] || {});
+        addCoef(COEF.tdir_flag[inputs.tdir_flag] || {});
+        addCoef(COEF.exliab_flag[inputs.exliab_flag] || {});
+        addCoef(COEF.excess_amt[inputs.excess_amt] || {});
         addCoef(COEF.total_insured(inputs.total_insured));
         addCoef(COEF.per_body_amt(inputs.per_body_amt));
         addCoef(COEF.per_death_amt(inputs.per_death_amt));
 
-        // ============ 6. 計算最終保費與損失率 ============
-        // 計算各險種保費 (Risk Premium)
-        const prem_B = Math.round((BASE.MODB.freqBase * freqCoef.modb) * (BASE.MODB.sevBase * sevCoef.modb * BASE.MODB.excessLoading));
-        const prem_C = Math.round((BASE.MODC.freqBase * freqCoef.modc) * (BASE.MODC.sevBase * sevCoef.modc * BASE.MODC.excessLoading));
-        const prem_PD = Math.round((BASE.TPLPD.freqBase * freqCoef.tplpd) * (BASE.TPLPD.sevBase * sevCoef.tplpd * BASE.TPLPD.excessLoading));
-        const prem_BI = Math.round((BASE.TPLBI.freqBase * freqCoef.tplbi) * (BASE.TPLBI.sevBase * sevCoef.tplbi * BASE.TPLBI.excessLoading));
+        // ============ 7. 計算最終保費與預期損失率 ============
+        const prem_B = Math.round(BASE.MODB.freqBase * freqCoef.modb * BASE.MODB.sevBase * sevCoef.modb * BASE.MODB.excessLoading);
+        const prem_C = Math.round(BASE.MODC.freqBase * freqCoef.modc * BASE.MODC.sevBase * sevCoef.modc * BASE.MODC.excessLoading);
+        const prem_PD = Math.round(BASE.TPLPD.freqBase * freqCoef.tplpd * BASE.TPLPD.sevBase * sevCoef.tplpd * BASE.TPLPD.excessLoading);
+        const prem_BI = Math.round(BASE.TPLBI.freqBase * freqCoef.tplbi * BASE.TPLBI.sevBase * sevCoef.tplbi * BASE.TPLBI.excessLoading);
 
-        // 設定實際簽單保費基準 (請填入您公司的實際基準值)
-        const actual_B = 20365, actual_C = 3193, actual_PD = 1775, actual_BI = 1218; 
+        // 您系統預設的簽單保費
+        const actual_B = 20365, actual_C = 3193, actual_PD = 1775, actual_BI = 1218;
 
-        // 封裝結果並回傳
-        res.status(200).json({ 
+        res.status(200).json({
             success: true,
             modB_premium: prem_B,
             modB_lr: ((prem_B / actual_B) * 100).toFixed(1) + "%",
@@ -300,7 +297,7 @@ app.post('/api/calculate', (req, res) => {
             tplPd_lr: ((prem_PD / actual_PD) * 100).toFixed(1) + "%",
             tplBi_premium: prem_BI,
             tplBi_lr: ((prem_BI / actual_BI) * 100).toFixed(1) + "%",
-            message: "25因子完整模型運算成功"
+            message: "25 因子全模型運算成功"
         });
 
     } catch (error) {
