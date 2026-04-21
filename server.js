@@ -2658,32 +2658,66 @@ app.post('/api/calculate', (req, res) => {
         applyCoef(COEF.per_body_amt(inputs.per_body_amt));
         applyCoef(COEF.per_death_amt(inputs.per_death_amt));
 
-        // 計算最終純保費
-        const prem_B = Math.round(BASE.MODB.freqBase * freqCoef.modb * BASE.MODB.sevBase * sevCoef.modb * BASE.MODB.excessLoading);
-        const prem_C = Math.round(BASE.MODC.freqBase * freqCoef.modc * BASE.MODC.sevBase * sevCoef.modc * BASE.MODC.excessLoading);
-        const prem_PD = Math.round(BASE.TPLPD.freqBase * freqCoef.tplpd * BASE.TPLPD.sevBase * sevCoef.tplpd * BASE.TPLPD.excessLoading);
-        const prem_BI = Math.round(BASE.TPLBI.freqBase * freqCoef.tplbi * BASE.TPLBI.sevBase * sevCoef.tplbi * BASE.TPLBI.excessLoading);
+        // === ⬇️ 從這裡開始替換：核心指標精算與輸出 ===
 
-        // 模擬動態簽單保費 LR 計算
+        // 1. 計算預估件均損失頻率 (Predicted Frequency)
+        const freq_B = BASE.MODB.freqBase * freqCoef.modb;
+        const freq_C = BASE.MODC.freqBase * freqCoef.modc;
+        const freq_PD = BASE.TPLPD.freqBase * freqCoef.tplpd;
+        const freq_BI = BASE.TPLBI.freqBase * freqCoef.tplbi;
+
+        // 2. 計算調整後件均損失金額 (Adjusted Severity = Base * Coef * Excess)
+        const sev_B = BASE.MODB.sevBase * sevCoef.modb * BASE.MODB.excessLoading;
+        const sev_C = BASE.MODC.sevBase * sevCoef.modc * BASE.MODC.excessLoading;
+        const sev_PD = BASE.TPLPD.sevBase * sevCoef.tplpd * BASE.TPLPD.excessLoading;
+        const sev_BI = BASE.TPLBI.sevBase * sevCoef.tplbi * BASE.TPLBI.excessLoading;
+
+        // 3. 計算模型風險保費 (Predicted Risk Premium)
+        const prem_B = freq_B * sev_B;
+        const prem_C = freq_C * sev_C;
+        const prem_PD = freq_PD * sev_PD;
+        const prem_BI = freq_BI * sev_BI;
+
+        // 4. 計算預期損失率 (Implied Loss Ratio)
+        // 這裡新增支援從前端(或Power Automate)傳入 "actual_mod_b" 等實際簽單保費
+        // 若無傳入實際保費，則使用目標損率(0.65)與折扣來模擬合理簽單保費
         const target_lr = 0.65;
         let discount = (inputs.sales_channel === "23.富昇保代") ? 0.90 : 1.0;
         
-        const actual_B = (prem_B / target_lr) * discount;
-        const actual_C = (prem_C / target_lr) * discount;
-        const actual_PD = (prem_PD / target_lr) * discount;
-        const actual_BI = (prem_BI / target_lr) * discount;
+        const actual_B = parseFloat(body.actual_mod_b) || ((prem_B / target_lr) * discount);
+        const actual_C = parseFloat(body.actual_mod_c) || ((prem_C / target_lr) * discount);
+        const actual_PD = parseFloat(body.actual_tpl_pd) || ((prem_PD / target_lr) * discount);
+        const actual_BI = parseFloat(body.actual_tpl_bi) || ((prem_BI / target_lr) * discount);
 
+        // 5. 輸出完整 4 項指標 JSON
         res.status(200).json({
             success: true,
-            modB_premium: prem_B,
+            
+            // 車體乙式 (MODB)
+            modB_premium: Math.round(prem_B),
+            modB_freq: freq_B.toFixed(4),
+            modB_sev: Math.round(sev_B),
             modB_lr: ((prem_B / actual_B) * 100).toFixed(1) + "%",
-            modC_premium: prem_C,
+
+            // 車體丙式 (MODC)
+            modC_premium: Math.round(prem_C),
+            modC_freq: freq_C.toFixed(4),
+            modC_sev: Math.round(sev_C),
             modC_lr: ((prem_C / actual_C) * 100).toFixed(1) + "%",
-            tplPd_premium: prem_PD,
+
+            // 第三人財損 (TPLPD)
+            tplPd_premium: Math.round(prem_PD),
+            tplPd_freq: freq_PD.toFixed(4),
+            tplPd_sev: Math.round(sev_PD),
             tplPd_lr: ((prem_PD / actual_PD) * 100).toFixed(1) + "%",
-            tplBi_premium: prem_BI,
+
+            // 第三人體傷 (TPLBI)
+            tplBi_premium: Math.round(prem_BI),
+            tplBi_freq: freq_BI.toFixed(4),
+            tplBi_sev: Math.round(sev_BI),
             tplBi_lr: ((prem_BI / actual_BI) * 100).toFixed(1) + "%",
-            message: "25 因子完美精確模型運算成功"
+            
+            message: "25 因子模型運算成功：四項核心精算指標匯出完成"
         });
 
     } catch (error) {
