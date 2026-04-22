@@ -90,53 +90,54 @@ app.post('/api/calculate', (req, res) => {
         applyCoef(COEF.per_body_amt(inputs.per_body_amt));
         applyCoef(COEF.per_death_amt(inputs.per_death_amt));
 
+        // 1. 計算預估損失頻率 (Predicted Frequency)
         const freq_B = BASE.MODB.freqBase * freqCoef.modb;
         const freq_C = BASE.MODC.freqBase * freqCoef.modc;
         const freq_PD = BASE.TPLPD.freqBase * freqCoef.tplpd;
         const freq_BI = BASE.TPLBI.freqBase * freqCoef.tplbi;
 
+        // 2. 計算調整後損失金額 (Adjusted Severity)
         const sev_B = BASE.MODB.sevBase * sevCoef.modb * BASE.MODB.excessLoading;
         const sev_C = BASE.MODC.sevBase * sevCoef.modc * BASE.MODC.excessLoading;
         const sev_PD = BASE.TPLPD.sevBase * sevCoef.tplpd * BASE.TPLPD.excessLoading;
         const sev_BI = BASE.TPLBI.sevBase * sevCoef.tplbi * BASE.TPLBI.excessLoading;
 
+        // 3. 計算模型風險保費 (Predicted Risk Premium)
         const prem_B = freq_B * sev_B;
         const prem_C = freq_C * sev_C;
         const prem_PD = freq_PD * sev_PD;
         const prem_BI = freq_BI * sev_BI;
 
-        const actual_B = parseFloat(body.actual_mod_b) || 0;
-        const actual_C = parseFloat(body.actual_mod_c) || 0;
-        const actual_PD = parseFloat(body.actual_tpl_pd) || 0;
-        const actual_BI = parseFloat(body.actual_tpl_bi) || 0;
+        // 4. 取得前端傳入的實際保費
+        const act_B = parseFloat(body.actual_mod_b) || 0;
+        const act_C = parseFloat(body.actual_mod_c) || 0;
+        const act_PD = parseFloat(body.actual_tpl_pd) || 0;
+        const act_BI = parseFloat(body.actual_tpl_bi) || 0;
 
         res.status(200).json({
             success: true,
+            // 乙式指標
             modB_premium: Math.round(prem_B),
-            modB_freq: freq_B.toFixed(4),
+            modB_freq: freq_B.toFixed(6),
             modB_sev: Math.round(sev_B),
-            modB_lr: actual_B > 0 ? ((prem_B / actual_B) * 100).toFixed(1) + "%" : "未提供",
-            
+            modB_lr: act_B > 0 ? ((prem_B / act_B) * 100).toFixed(1) + "%" : "未提供",
+            // 丙式指標
             modC_premium: Math.round(prem_C),
-            modC_freq: freq_C.toFixed(4),
+            modC_freq: freq_C.toFixed(6),
             modC_sev: Math.round(sev_C),
-            modC_lr: actual_C > 0 ? ((prem_C / actual_C) * 100).toFixed(1) + "%" : "未提供",
-            
+            modC_lr: act_C > 0 ? ((prem_C / act_C) * 100).toFixed(1) + "%" : "未提供",
+            // 財損指標
             tplPd_premium: Math.round(prem_PD),
-            tplPd_freq: freq_PD.toFixed(4),
+            tplPd_freq: freq_PD.toFixed(6),
             tplPd_sev: Math.round(sev_PD),
-            tplPd_lr: actual_PD > 0 ? ((prem_PD / actual_PD) * 100).toFixed(1) + "%" : "未提供",
-            
+            tplPd_lr: act_PD > 0 ? ((prem_PD / act_PD) * 100).toFixed(1) + "%" : "未提供",
+            // 體傷指標
             tplBi_premium: Math.round(prem_BI),
-            tplBi_freq: freq_BI.toFixed(4),
+            tplBi_freq: freq_BI.toFixed(6),
             tplBi_sev: Math.round(sev_BI),
-            tplBi_lr: actual_BI > 0 ? ((prem_BI / actual_BI) * 100).toFixed(1) + "%" : "未提供",
-            
-            message: "25 因子完美精確模型運算成功"
+            tplBi_lr: act_BI > 0 ? ((prem_BI / act_BI) * 100).toFixed(1) + "%" : "未提供"
         });
-    } catch (error) {
-        res.status(500).json({ success: false, error: error.message });
-    }
+    } catch (e) { res.status(500).json({ success: false, error: e.message }); }
 });
 
 const PORT = process.env.PORT || 3000;
