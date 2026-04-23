@@ -148,24 +148,23 @@ app.post('/api/calculate', (req, res) => {
         const pPD = BASE.TPLPD.f * f.pd * BASE.TPLPD.s * s.pd;
         const pBI = BASE.TPLBI.f * f.bi * BASE.TPLBI.s * s.bi * BASE.TPLBI.loading;
 
-        // 接收前端傳來的實際報價，用以計算損率
+        // 接收前端實際報價 (LR 計算分母)
         const actB = parseFloat(b.actual_mod_b) || 0;
         const actC = parseFloat(b.actual_mod_c) || 0;
         const actPD = parseFloat(b.actual_tpl_pd) || 0;
         const actBI = parseFloat(b.actual_tpl_bi) || 0;
 
+        // 💡 扁平化輸出：移除了 premium_analysis，讓 Copilot 直接抓取變數
         res.status(200).json({
             success: true,
-            premium_analysis: {
-                modB_premium: Math.round(pB),
-                modB_lr: actB > 0 ? ((pB / actB) * 100).toFixed(1) + "%" : "未提供實際保費",
-                modC_premium: Math.round(pC),
-                modC_lr: actC > 0 ? ((pC / actC) * 100).toFixed(1) + "%" : "未提供實際保費",
-                tplPd_premium: Math.round(pPD),
-                tplPd_lr: actPD > 0 ? ((pPD / actPD) * 100).toFixed(1) + "%" : "未提供實際保費",
-                tplBi_premium: Math.round(pBI),
-                tplBi_lr: actBI > 0 ? ((pBI / actBI) * 100).toFixed(1) + "%" : "未提供實際保費"
-            },
+            modB_premium: Math.round(pB),
+            modB_lr: actB > 0 ? ((pB / actB) * 100).toFixed(1) + "%" : "請輸入實際保費",
+            modC_premium: Math.round(pC),
+            modC_lr: actC > 0 ? ((pC / actC) * 100).toFixed(1) + "%" : "請輸入實際保費",
+            tplPd_premium: Math.round(pPD),
+            tplPd_lr: actPD > 0 ? ((pPD / actPD) * 100).toFixed(1) + "%" : "請輸入實際保費",
+            tplBi_premium: Math.round(pBI),
+            tplBi_lr: actBI > 0 ? ((pBI / actBI) * 100).toFixed(1) + "%" : "請輸入實際保費",
             recommendations: generateRecommendations(b)
         });
     } catch (e) { res.status(500).json({ error: e.message }); }
